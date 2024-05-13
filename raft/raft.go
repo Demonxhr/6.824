@@ -633,6 +633,7 @@ func (rf *Raft) leaderSendSnapShot(server int) {
 			return
 		}
 
+		// 更新peer的状态，安装了前面的快照就不用添加前面的日志信息了
 		rf.matchIndex[server] = args.LastIncludeIndex
 		rf.nextIndex[server] = args.LastIncludeIndex + 1
 
