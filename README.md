@@ -102,7 +102,7 @@
 
 ## 日志压缩（快照机制）
 
-<img src="C:\Users\34279\Desktop\6.824\6.824\src\image\snapshot.png" alt="snapshot" style="zoom:50%;" />
+<img src=".\image\snapshot.png" alt="snapshot" style="zoom:50%;" />
 
 快照要保存的为：状态机的状态、lastincludeindex、lastincludeterm
 
