@@ -456,7 +456,9 @@ func (rf *Raft) leaderAppendEntries() {
 				LeaderCommit: rf.commitIndex,
 			}
 
+			// 心跳  判断是否要同步日志
 			if rf.getLastIndex() >= rf.nextIndex[server] {
+				// 深拷贝
 				entries := make([]LogEntry, 0)
 				entries = append(entries, rf.logs[rf.nextIndex[server]-rf.lastIncludeIndex:]...)
 				args.Entries = entries
@@ -563,7 +565,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	// 如果自身最后的快照日志比prev小说明中间有缺失日志，such 3、4、5、6、7 返回的开头为6、7，而自身到4，缺失5
 	if rf.getLastIndex() < args.PrevLogIndex {
 		reply.Success = false
-		reply.UpNextIndex = rf.getLastIndex()
+		reply.UpNextIndex = rf.getLastIndex() + 1
 		return
 	} else {
 		if rf.restoreLogTerm(args.PrevLogIndex) != args.PrevLogTerm {
