@@ -102,3 +102,20 @@
 
 ## 日志压缩（快照机制）
 
+<img src="C:\Users\34279\Desktop\6.824\6.824\src\image\snapshot.png" alt="snapshot" style="zoom:50%;" />
+
+快照要保存的为：状态机的状态、lastincludeindex、lastincludeterm
+
+
+
+日志压缩 安装快照是上层sevice的要求，即上层sevice通过调用该节点的snapshot来实现快照、日志的压缩，与leader添加日志无关，是每个peer自身的事。
+
+
+
+在日志复制的时候判断当peer节点的nextindex小于领导者的快照index（lastincludeindex），
+
+即rf.nextIndex[server]-1 < rf.lastIncludeIndex 
+
+即领导者在appendEntries添加日志时，领导者lastIncludeIndex（含）前的日志都已经被压缩进了快照，所以无法发送lastIncludeIndex及其之前的日志给peer，所以这时要为该peer安装一次快照。
+
+则起一个协程进行快照安装。
