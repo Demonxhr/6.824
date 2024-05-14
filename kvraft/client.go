@@ -3,10 +3,15 @@ package kvraft
 import "6.824/labrpc"
 import "crypto/rand"
 import "math/big"
+import mathrand "math/rand"
 
 type Clerk struct {
 	servers []*labrpc.ClientEnd
 	// You will have to modify this struct.
+	// 解决op执行两次 leader commit log后寄了 client未收到响应重新请求导致执行两次op
+	seqId    int64
+	clientId int64
+	leaderId int
 }
 
 func nrand() int64 {
@@ -20,6 +25,8 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
 	// You'll have to add code here.
+	ck.clientId = nrand()
+	ck.leaderId = mathrand.Intn(len(ck.servers))
 	return ck
 }
 
