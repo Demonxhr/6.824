@@ -847,6 +847,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		term := rf.currentTerm
 		rf.logs = append(rf.logs, LogEntry{Term: term, Command: command})
 		rf.persist()
+		go rf.leaderAppendEntries()
 		return index, term, true
 	}
 }
