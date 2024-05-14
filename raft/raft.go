@@ -74,12 +74,12 @@ type ApplyMsg struct {
 const (
 
 	// MoreVoteTime MinVoteTime 定义随机生成投票过期时间范围:(MoreVoteTime+MinVoteTime~MinVoteTime)
-	MoreVoteTime = 200
-	MinVoteTime  = 150
+	MoreVoteTime = 100
+	MinVoteTime  = 75
 
 	// HeartbeatSleep 心脏休眠时间,要注意的是，这个时间要比选举低，才能建立稳定心跳机制
-	HeartbeatSleep = 120
-	AppliedSleep   = 30
+	HeartbeatSleep = 35
+	AppliedSleep   = 15
 )
 
 type Raft struct {
@@ -110,6 +110,7 @@ type Raft struct {
 	status     Status
 	voteNum    int // 记录当前投票给了谁
 	votedTimer time.Time
+	//appendTimer time.Time
 
 	// 2D中用于传入快照点
 	lastIncludeIndex int
@@ -254,9 +255,11 @@ func (rf *Raft) electionTicker() {
 
 func (rf *Raft) appendTicker() {
 	for rf.killed() == false {
+		//nowTime := time.Now()
 		time.Sleep(HeartbeatSleep * time.Millisecond)
 		rf.mu.Lock()
 		if rf.status == Leader {
+			//rf.appendTimer = time.Now()
 			rf.mu.Unlock()
 			rf.leaderAppendEntries()
 		} else {
@@ -565,6 +568,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	// 如果自身最后的快照日志比prev小说明中间有缺失日志，such 3、4、5、6、7 返回的开头为6、7，而自身到4，缺失5
 	if rf.getLastIndex() < args.PrevLogIndex {
 		reply.Success = false
+		//
 		reply.UpNextIndex = rf.getLastIndex() + 1
 		return
 	} else {
@@ -847,6 +851,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		term := rf.currentTerm
 		rf.logs = append(rf.logs, LogEntry{Term: term, Command: command})
 		rf.persist()
+		//rf.appendTimer = time.Now()
 		go rf.leaderAppendEntries()
 		return index, term, true
 	}

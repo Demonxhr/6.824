@@ -43,7 +43,30 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 func (ck *Clerk) Get(key string) string {
 
 	// You will have to modify this function.
-	return ""
+	ck.seqId++
+	args := GetArgs{Key: key, ClientId: ck.clientId, SeqId: ck.seqId}
+	serverId := ck.leaderId
+
+	for {
+		reply := GetReply{}
+		ok := ck.servers[serverId].Call("KVServer.Get", &args, &reply)
+
+		if ok {
+			if reply.Err == ErrNoKey {
+				ck.leaderId = serverId
+				return ""
+			} else if reply.Err == OK {
+				ck.leaderId = serverId
+				return reply.Value
+			} else if reply.Err == ErrWrongLeader {
+				serverId = (serverId + 1) % len(ck.servers)
+				continue
+			}
+		}
+		// 节点发生其他问题时
+		serverId = (serverId + 1) % len(ck.servers)
+	}
+
 }
 
 // shared by Put and Append.
@@ -56,6 +79,24 @@ func (ck *Clerk) Get(key string) string {
 // arguments. and reply must be passed as a pointer.
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// You will have to modify this function.
+	ck.seqId++
+	serverId := ck.leaderId
+	args := PutAppendArgs{Key: key, Value: value, Op: op, ClientId: ck.clientId, SeqId: ck.seqId}
+
+	for {
+		reply := PutAppendReply{}
+		ok := ck.servers[serverId].Call("KVServer.PutAppend", &args, &reply)
+		if ok {
+			if reply.Err == OK {
+				ck.leaderId = serverId
+				return
+			} else if reply.Err == ErrWrongLeader {
+				serverId = (serverId + 1) % len(ck.servers)
+				continue
+			}
+		}
+		serverId = (serverId + 1) % len(ck.servers)
+	}
 }
 
 func (ck *Clerk) Put(key string, value string) {
