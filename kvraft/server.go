@@ -4,6 +4,8 @@ import (
 	"6.824/labgob"
 	"6.824/labrpc"
 	"6.824/raft"
+	"bytes"
+	"fmt"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -41,9 +43,11 @@ type KVServer struct {
 	maxraftstate int // snapshot if log grows this big
 
 	// Your definitions here.
-	seqMap    map[int64]int64
+	seqMap    map[int64]int64 //每个server对应的最大id
 	waitChMap map[int]chan Op
 	kvPersist map[string]string
+
+	lastIncludeIndex int
 }
 
 func (kv *KVServer) getWaitCh(index int) chan Op {
@@ -70,9 +74,11 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	}
 
 	op := Op{OpType: "Get", Key: args.Key, SeqId: args.SeqId, ClientId: args.ClientId}
+	// 读前写保证最新
 	lastIndex, _, _ := kv.rf.Start(op)
 
 	ch := kv.getWaitCh(lastIndex)
+	//延后删除  防止map过大
 	defer func() {
 		kv.mu.Lock()
 		delete(kv.waitChMap, op.Index)
@@ -165,6 +171,36 @@ func (kv *KVServer) ifDuplicate(clientId int64, seqId int64) bool {
 	return seqId <= lastSeqId
 }
 
+// 封装状态机的状态到快照
+func (kv *KVServer) PersistSnapShot() []byte {
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+
+	//封装持久化内容
+	e.Encode(kv.kvPersist)
+	e.Encode(kv.seqMap)
+	data := w.Bytes()
+	return data
+}
+
+func (kv *KVServer) DecodeSnapShot(snapshot []byte) {
+	if snapshot == nil || len(snapshot) < 1 {
+		return
+	}
+	r := bytes.NewBuffer(snapshot)
+	d := labgob.NewDecoder(r)
+	var kvPersist map[string]string
+	var seqMap map[int64]int64
+
+	if d.Decode(&kvPersist) == nil && d.Decode(&seqMap) == nil {
+		kv.kvPersist = kvPersist
+		kv.seqMap = seqMap
+	} else {
+		fmt.Printf("[Server(%v)] Failed to decode snapshot！！！", kv.me)
+	}
+}
 func (kv *KVServer) applyMsgHandlerLoop() {
 	for {
 		if kv.killed() {
@@ -172,22 +208,45 @@ func (kv *KVServer) applyMsgHandlerLoop() {
 		}
 		select {
 		case msg := <-kv.applyCh:
-			index := msg.CommandIndex
-			//非安全的类型断言 会触发运行时恐慌
-			op := msg.Command.(Op)
-			if !kv.ifDuplicate(op.ClientId, op.SeqId) {
-				kv.mu.Lock()
-				switch op.OpType {
-				case "Put":
-					kv.kvPersist[op.Key] = op.Value
-				case "Append":
-					kv.kvPersist[op.Key] += op.Value
+			if msg.CommandValid {
+				if msg.CommandIndex <= kv.lastIncludeIndex {
+					return
 				}
-				kv.seqMap[op.ClientId] = op.SeqId
+				index := msg.CommandIndex
+				//非安全的类型断言 会触发运行时恐慌
+				op := msg.Command.(Op)
+				if !kv.ifDuplicate(op.ClientId, op.SeqId) {
+					kv.mu.Lock()
+					switch op.OpType {
+					case "Put":
+						kv.kvPersist[op.Key] = op.Value
+					case "Append":
+						kv.kvPersist[op.Key] += op.Value
+					}
+					kv.seqMap[op.ClientId] = op.SeqId
+					kv.mu.Unlock()
+				}
+				//persist中func (ps *Persister) RaftStateSize() int
+				if kv.maxraftstate != -1 && kv.rf.GetRaftStateSize() > kv.maxraftstate {
+					// 上层service层向raft要求安装快照
+					snapshot := kv.PersistSnapShot()
+					// 让raft安装快照
+					kv.rf.Snapshot(msg.CommandIndex, snapshot)
+				}
+				kv.getWaitCh(index) <- op
+			}
+			// leader同步快照或上面同步快照成功
+			if msg.SnapshotValid {
+				kv.mu.Lock()
+				// 直接返回true有没有都一样
+				if kv.rf.CondInstallSnapshot(msg.SnapshotTerm, msg.SnapshotIndex, msg.Snapshot) {
+					kv.DecodeSnapShot(msg.Snapshot)
+					kv.lastIncludeIndex = msg.SnapshotIndex
+				}
 				kv.mu.Unlock()
 			}
-			kv.getWaitCh(index) <- op
 		}
+
 	}
 }
 
@@ -221,6 +280,13 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.seqMap = make(map[int64]int64)
 	kv.kvPersist = make(map[string]string)
 	kv.waitChMap = make(map[int]chan Op)
+
+	kv.lastIncludeIndex = -1
+
+	snapshot := persister.ReadSnapshot()
+	if len(snapshot) > 0 {
+		kv.DecodeSnapShot(snapshot)
+	}
 
 	go kv.applyMsgHandlerLoop()
 	return kv

@@ -472,6 +472,7 @@ func (rf *Raft) leaderAppendEntries() {
 			rf.mu.Unlock()
 
 			//fmt.Printf("[TIKER-SendHeart-Rf(%v)-To(%v)] args:%+v,curStatus%v\n", rf.me, server, args, rf.status)
+
 			re := rf.sendAppendEntries(server, &args, &reply)
 
 			if re == true {
