@@ -128,5 +128,8 @@
 
 ## kvraft
 
+<img src=".\image\kvraft整体架构.png" alt="kvraft整体架构" style="zoom:30%;" />
 
+<img src=".\image\kvraft流程.png" alt="kvraft流程" style="zoom:30%;" />
 
+clinet get查询时需要添加一次日志获取最新的索引后查询该server的kv数据库得到的数据就是最新的。
